@@ -1,7 +1,13 @@
 {
-  "name": "bunify",
-  "module": "index.ts",
+  "name": "@groupclaes/bunify",
+  "version": "0.0.1",
+  "module": "lib/index.ts",
+  "description": "Fastify but for Bun",
   "type": "module",
+  "scripts": {
+    "test": "bun test --coverage --randomize --coverage-reporter=text --coverage-reporter=lcov"
+  },
+  "exports": "./lib/index.ts",
   "devDependencies": {
     "@types/bun": "latest"
   },
