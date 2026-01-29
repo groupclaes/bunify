@@ -49,13 +49,6 @@ export interface BunifyOptions {
    */
   log?: LoggerOptions | pino.Logger
   /**
-   * Service details to be put in the structured logs
-   */
-  service?: {
-    name?: string
-    version?: string
-  }
-  /**
    * Bun server port to use
    * @default $BUNIFY_PORT, $BUN_PORT, $PORT, $NODE_PORT, 3000
    */
@@ -81,6 +74,11 @@ export interface BunifyOptions {
    */
   hostname?: "0.0.0.0" | "127.0.0.1" | "localhost" | (string & {})
   /**
+   * Prefix base path 
+   * @default $BUNIFY_PATH, /
+   */
+  basePath?: string
+  /**
    * Only listen on the IPv6 stack
    */
   ipv6Only?: boolean
@@ -89,13 +87,18 @@ export interface BunifyOptions {
    * @default $BUN_ENV, $NODE_ENV
    */
   development?: boolean,
-  tls: TLSOptions | TLSOptions[],
+  tls?: TLSOptions | TLSOptions[],
   request?: {
     /**
      * Enable request time tracking
      * @default false
      */
     executionTime?: boolean
+    /**
+     * Log the IP-address
+     * @default false
+     */
+    logIp?: boolean
   }
 }
 
@@ -108,10 +111,9 @@ export class BunifyOptionsValidator {
 
     for (const envPort of ENV_PORTS_POSSIBLE) {
       if (process.env[envPort] && process.env[envPort].length > 0) {
-        if (!isNaN(+process.env[envPort]))
+        const envValue = +process.env[envPort]
+        if (!isNaN(envValue) || envValue < 0 || envValue > 65535)
           throw new BunifyOptionsError(`Found environment variable ${envPort} with invalid port value ${process.env[envPort]}`)
-        else
-          options.port = +process.env[envPort]
       }
     }
   }
