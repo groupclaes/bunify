@@ -1,6 +1,7 @@
 import type { LoggerOptions } from 'pino'
 import { BunifyOptionsError } from './errors'
 import type { TLSOptions } from 'bun'
+import type pino from 'pino'
 
 /**
  * @internal
@@ -18,14 +19,42 @@ export interface BunifyOptions {
    */
   statistics?: {
     /**
-     * Get the total processed request count
+     * Amount of seconds inbetween metrics logging to pino
+     * @default 0 disabled metrics logging
      */
-    requestCount?: boolean
+    metricsLogInterval?: number
+    /**
+     * Endpoint url to GET the metrics from the API
+     * @default false
+     */
+    metricsEndpoint?: string
+    /**
+     * Track the total processed requests during the runtime
+     * @default false
+     */
+    requests?: boolean
+    /**
+     * Track the total amount of exceptions that occurred during the runtime
+     * @default false
+     */
+    errors?: boolean
+    /**
+     * Track all http redirects during the runtime
+     * @default false
+     */
+    redirects?: boolean
   }
   /**
    * Pino logging configuration
    */
-  log?: LoggerOptions
+  log?: LoggerOptions | pino.Logger
+  /**
+   * Service details to be put in the structured logs
+   */
+  service?: {
+    name?: string
+    version?: string
+  }
   /**
    * Bun server port to use
    * @default $BUNIFY_PORT, $BUN_PORT, $PORT, $NODE_PORT, 3000
@@ -60,7 +89,14 @@ export interface BunifyOptions {
    * @default $BUN_ENV, $NODE_ENV
    */
   development?: boolean,
-  tls: TLSOptions | TLSOptions[]
+  tls: TLSOptions | TLSOptions[],
+  request?: {
+    /**
+     * Enable request time tracking
+     * @default false
+     */
+    executionTime?: boolean
+  }
 }
 
 
