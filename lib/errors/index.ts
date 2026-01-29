@@ -1,0 +1,1 @@
+export { BunifyOptionsError } from './bunify-error'
