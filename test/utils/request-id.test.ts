@@ -82,7 +82,7 @@ describe('RequestId', () => {
       expect(generatedResult).toHaveLength(36)
     })
 
-    test('should return a requestId generator that generates random UUIDv7s if idHeader is valid', () => {
+    test('should return a requestId generator that returns the idHeader value if valid', () => {
       const bunify = { requestOptions: { idHeader: 'non-existant' } } as unknown as Bunify
       const fakeRequest = { headers: { get: () => '019c1f51-6062-7000-9486-835eb27f8919' }} as unknown as BunRequest
 
