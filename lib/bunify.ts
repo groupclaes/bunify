@@ -1,26 +1,36 @@
 import { EnvUtils } from './utils/environment';
 import pino from 'pino'
 import type { BunifyOptions } from './options'
-import { BunifyOptionsValidator, ENV_PORTS_POSSIBLE } from './options'
+import { ENV_PORTS_POSSIBLE } from './options'
 import { BunifyError } from './errors/bunify-error';
-import type { BunifyRequest } from './request';
-import type { BunifyResponse } from './response';
+import { BunifyResponse } from './response';
+import { defaultErrorHandlerFactory } from './errors/error-handler';
+import { BUNIFY_DEFAULT_REQUEST_ID_HEADER, defaultRequestIdGeneratorFactory } from './utils/request-id';
 
 export interface BunifyInstance {
 
+}
+
+function loggerFactory(logOptions?: boolean | pino.LoggerOptions<never, boolean> | pino.Logger<never, boolean>): pino.Logger | undefined {
+  if (logOptions) {
+    if (logOptions === true) {
+      return pino()
+    }
+
+    return pino(logOptions)
+  }
 }
 
 /**
  * Fastify functionality with Bun performance
  */
 export class Bunify implements BunifyInstance {
-  private readonly _baseLogger: pino.Logger
+  private readonly _baseLogger: pino.Logger | undefined
   private readonly _options: BunifyOptions
   protected _server?: Bun.Server<any>
-  private _pino: pino.Logger
+  private _pino: pino.Logger | undefined
 
   private _errorHandler?: (error: Bun.ErrorLike) => BunifyResponse | Promise<BunifyResponse> | void | Promise<void>
-  private _genReqId?: (request: BunifyRequest) => number | string
 
   get port() {
     return this._server?.port ?? this.getPort()
@@ -38,6 +48,10 @@ export class Bunify implements BunifyInstance {
     return this._server != null
   }
 
+  get requestOptions() {
+    return this._options.request
+  }
+
   set errorHandler(value: (error: Bun.ErrorLike) => Response | Promise<Response> | void | Promise<void>) {
     this._errorHandler = value
   }
@@ -47,10 +61,23 @@ export class Bunify implements BunifyInstance {
    * @param options 
    */
   constructor(options: BunifyOptions) {
-    // Throws if there's a misconfiguration
     this._options = options
 
-    this._baseLogger = pino(options.log)
+    // Setup request options
+    if (!options.request) {
+      options.request = {}
+    }
+
+    if (options.request.idHeader == null || options.request.idHeader === true) {
+      options.request.idHeader = BUNIFY_DEFAULT_REQUEST_ID_HEADER
+    }
+
+    if (!options.request.genReqId) {
+      options.request.genReqId = defaultRequestIdGeneratorFactory(this)
+    }
+
+
+    this._baseLogger = loggerFactory(options.log)
     this._pino = this._baseLogger
   }
 
@@ -71,11 +98,15 @@ export class Bunify implements BunifyInstance {
     const hasTls = this._options.tls != null && (!Array.isArray(this._options.tls) || this._options.tls.length > 0)
 
     if (!this._options.silent)
-      this._pino.info({ service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` }}, `Starting Bunify server`)
+      this._pino?.info({ service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` }}, `Starting Bunify server`)
     this._server = Bun.serve(this.getServerSettings(hostname, port))
-    this._pino = this._baseLogger.child({ service: { ephemeral_id: this._server.id } })
+
+    if (this._baseLogger) {
+      this._pino = this._baseLogger?.child({ service: { ephemeral_id: this._server.id } })
+    }
+  
     if (!this._options.silent)
-      this._pino.info({ service: { address: this._server.url }}, `Started Bunify server`)
+      this._pino?.info({ service: { address: this._server.url }}, `Started Bunify server`)
 
     return this
   }
@@ -89,7 +120,7 @@ export class Bunify implements BunifyInstance {
       throw new BunifyError('Server isn\'t running!')
 
     if (!this._options.silent)
-      this._pino.info({ service: { address: this._server.url }},  `Starting Bunify server`)
+      this._pino?.info({ service: { address: this._server.url }},  `Starting Bunify server`)
 
     this._server.reload(this.getServerSettings(this._server.hostname, this._server.port))
 
@@ -106,8 +137,11 @@ export class Bunify implements BunifyInstance {
     if (this._server == null)
       throw new BunifyError('Server isn\'t running!')
 
-    if (!this._options.silent) this._pino.info(`${kill ? 'Killing' : 'Stopping'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
+    if (!this._options.silent)
+      this._pino?.debug(`${kill ? 'Killing' : 'Stopping'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
     await this._server?.stop(kill)
+    if (!this._options.silent)
+      this._pino?.debug(`${kill ? 'Killed' : 'Stopped'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
 
     // Remove server instance
     this._server = undefined
@@ -192,15 +226,7 @@ export class Bunify implements BunifyInstance {
 
       ],
       // Order: Custom error handler, development page (if enabled), default error handler
-      error: this._errorHandler ?? !serveDevelopment ? this.defaultErrorHandler : undefined
+      error: this._errorHandler ?? !serveDevelopment ? defaultErrorHandlerFactory(this) : undefined
     } satisfies Bun.Serve.Options<any, never>
-  }
-
-  private defaultErrorHandler(error: Bun.ErrorLike) {
-    this._pino.error({ err: error }, 'An unhandled exception occured!')
-    return Response.json({
-      code: 500,
-      status: "An unhandled exception occured!"
-    }, { status: 500, statusText: 'An unhandled exception occured!' })
   }
 }
