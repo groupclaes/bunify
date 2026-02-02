@@ -1,6 +1,6 @@
 import type { LoggerOptions } from 'pino'
 import { BunifyOptionsError } from './errors'
-import type { TLSOptions } from 'bun'
+import type { BunRequest, TLSOptions } from 'bun'
 import type pino from 'pino'
 import type { BunifyRequest } from './request'
 
@@ -47,8 +47,9 @@ export interface BunifyOptions {
   }
   /**
    * Pino logging configuration
+   * @default false Logging is disabled by default for performance
    */
-  log?: LoggerOptions | pino.Logger
+  log?: boolean | LoggerOptions | pino.Logger
   /**
    * Bun server port to use
    * @default $BUNIFY_PORT, $BUN_PORT, $PORT, $NODE_PORT, 3000
@@ -101,8 +102,13 @@ export interface BunifyOptions {
      */
     logIp?: boolean
     /**
+     * Log all the HTTP request and response fields in ecs format
+     * @default false
+     */
+    logEcsFields?: boolean
+    /**
      * Specify the request header to use as request-id/trace-id
-     * 
+     * @default "request-id"
      */
     idHeader?: boolean | string
     /**
@@ -111,7 +117,7 @@ export interface BunifyOptions {
      * @param request 
      * @returns 
      */
-    genReqId?: (request: BunifyRequest) => number | string
+    genReqId?: (request: BunRequest) => number | string
   }
 }
 
