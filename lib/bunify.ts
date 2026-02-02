@@ -3,16 +3,24 @@ import pino from 'pino'
 import type { BunifyOptions } from './options'
 import { BunifyOptionsValidator, ENV_PORTS_POSSIBLE } from './options'
 import { BunifyError } from './errors/bunify-error';
+import type { BunifyRequest } from './request';
+import type { BunifyResponse } from './response';
+
+export interface BunifyInstance {
+
+}
 
 /**
  * Fastify functionality with Bun performance
  */
-export class Bunify {
-  private readonly _pino: pino.Logger
+export class Bunify implements BunifyInstance {
+  private readonly _baseLogger: pino.Logger
   private readonly _options: BunifyOptions
-  private _server?: Bun.Server<any>
+  protected _server?: Bun.Server<any>
+  private _pino: pino.Logger
 
-  private _errorHandler?: (error: Bun.ErrorLike) => Response | Promise<Response> | void | Promise<void>
+  private _errorHandler?: (error: Bun.ErrorLike) => BunifyResponse | Promise<BunifyResponse> | void | Promise<void>
+  private _genReqId?: (request: BunifyRequest) => number | string
 
   get port() {
     return this._server?.port ?? this.getPort()
@@ -26,6 +34,10 @@ export class Bunify {
     return this._pino
   }
 
+  get running() {
+    return this._server != null
+  }
+
   set errorHandler(value: (error: Bun.ErrorLike) => Response | Promise<Response> | void | Promise<void>) {
     this._errorHandler = value
   }
@@ -36,20 +48,20 @@ export class Bunify {
    */
   constructor(options: BunifyOptions) {
     // Throws if there's a misconfiguration
-    BunifyOptionsValidator.validate(options)
-
     this._options = options
 
-    this._pino = pino(options.log)
+    this._baseLogger = pino(options.log)
+    this._pino = this._baseLogger
   }
 
   /**
    * Start the Bunify server
    * 
+   * @throws {BunifyError} if the server is already running
    * @param hostname Override the configuration's listen addresses
    * @param port Override the configuration's listen port
    */
-  listen(hostname?: string, port?: number) {
+  listen(hostname?: string, port?: number): Bunify {
     if (this._server != null) {
       throw new BunifyError('Server is already running, reload stop or reload the process');
     }
@@ -58,47 +70,68 @@ export class Bunify {
     port = this.getPort(port)
     const hasTls = this._options.tls != null && (!Array.isArray(this._options.tls) || this._options.tls.length > 0)
 
-    if (!this._options.silent) this._pino.info({ service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` }},  `Starting Bunify server`)
+    if (!this._options.silent)
+      this._pino.info({ service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` }}, `Starting Bunify server`)
     this._server = Bun.serve(this.getServerSettings(hostname, port))
-    if (!this._options.silent) this._pino.info({ service: { address: this._server.url }},  `Started Bunify server`)
+    this._pino = this._baseLogger.child({ service: { ephemeral_id: this._server.id } })
+    if (!this._options.silent)
+      this._pino.info({ service: { address: this._server.url }}, `Started Bunify server`)
+
+    return this
   }
 
   /**
    * Reload the Bunify server, applying the new routes
+   * @throws {BunifyError} if server hasn't been started yet
    */
-  reload() {
-    if (this._server == null) {
-      throw new BunifyError('Server isn\'t running!');
-    }
+  reload(): Bunify {
+    if (this._server == null)
+      throw new BunifyError('Server isn\'t running!')
+
+    if (!this._options.silent)
+      this._pino.info({ service: { address: this._server.url }},  `Starting Bunify server`)
 
     this._server.reload(this.getServerSettings(this._server.hostname, this._server.port))
+
+    return this
   }
 
   /**
    * Stop the the Bunify server
    * 
    * @param kill Should the server be terminated, aborting all in-flight request
+   * @throws {BunifyError} if server hasn't been started yet
    */
-  async stop(kill: boolean = false): Promise<void> {
+  async stop(kill: boolean = false): Promise<Bunify> {
+    if (this._server == null)
+      throw new BunifyError('Server isn\'t running!')
+
     if (!this._options.silent) this._pino.info(`${kill ? 'Killing' : 'Stopping'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
     await this._server?.stop(kill)
 
     // Remove server instance
     this._server = undefined
+    this._pino = this._baseLogger
+
+    return this
   }
 
   /**
    * Register an extension
    */
-  register() {
+  register(): Bunify {
     throw new BunifyError('Not implemented yet')
+
+    return this
   }
 
   /**
    * 
    */
-  use() {
+  use(): Bunify {
     throw new BunifyError('Not implemented yet')
+
+    return this
   }
 
   /**
@@ -116,7 +149,7 @@ export class Bunify {
     for (const envPort of ENV_PORTS_POSSIBLE) {
       if (process.env[envPort] && process.env[envPort].length > 0) {
         const envPortValue = +process.env[envPort]
-        if (!isNaN(envPortValue) && envPortValue > -1 && envPortValue < 65535) {
+        if (!isNaN(envPortValue) && envPortValue > -1 && envPortValue < 65536) {
           return envPortValue !== 0 ? envPortValue : 3000
         }
       }
@@ -149,6 +182,7 @@ export class Bunify {
     const serveDevelopment = this._options.development ?? EnvUtils.envEquals([ 'BUN_ENV', 'NODE_ENV' ], "development") ?? false
 
     return {
+      id: this._server?.id ?? Bun.randomUUIDv7(),
       port,
       hostname,
       ipv6Only: this._options.ipv6Only ?? false,

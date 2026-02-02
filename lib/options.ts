@@ -2,6 +2,7 @@ import type { LoggerOptions } from 'pino'
 import { BunifyOptionsError } from './errors'
 import type { TLSOptions } from 'bun'
 import type pino from 'pino'
+import type { BunifyRequest } from './request'
 
 /**
  * @internal
@@ -99,6 +100,18 @@ export interface BunifyOptions {
      * @default false
      */
     logIp?: boolean
+    /**
+     * Specify the request header to use as request-id/trace-id
+     * 
+     */
+    idHeader?: boolean | string
+    /**
+     * Function to generate the request id
+     * 
+     * @param request 
+     * @returns 
+     */
+    genReqId?: (request: BunifyRequest) => number | string
   }
 }
 

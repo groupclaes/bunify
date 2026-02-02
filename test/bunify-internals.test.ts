@@ -1,4 +1,4 @@
-import { test, describe, expect } from 'bun:test'
+import { test, describe, expect, afterEach } from 'bun:test'
 
 import { Bunify } from '../lib/bunify'
 import { ENV_PORTS_POSSIBLE } from '../lib/options'
@@ -36,27 +36,21 @@ describe('Bunify', () => {
       expect(getPort(1)).toBe(1)
     })
 
-    test('should return environment variable port if between 0 and 65535', () => {
+    test.each([ 1, 6969, 4200, 65535 ])('should return environment variable port is %p', (port) => {
       for(const envPort of ENV_PORTS_POSSIBLE) {
-        for (const port of [ 1, 6969, 4200 ]) {
-          cleanupEnvVariables()
-          process.env[envPort] = port + ''
-          expect(getPort()).toBe(port)
-        }
+        cleanupEnvVariables()
+        process.env[envPort] = port + ''
+        expect(getPort()).toBe(port)
       }
     })
 
     test('should ignore invalid environment variable port if not between 0 and 65535 or NaN', () => {
       for(const envPort of ENV_PORTS_POSSIBLE) {
         for (const port of [ '-1', '65536', 'cheese' ]) {
-          cleanupEnvVariables()
           process.env[envPort] = port
           expect(getPort()).toBe(6969)
         }
       }
-
-      // Cleanup
-      cleanupEnvVariables()
     })
     test('should return correct order of env variable ports', () => {
       setRandomEnvPorts()
@@ -65,10 +59,9 @@ describe('Bunify', () => {
         expect(getPort()).toBe(+RANDOM_PORTS[i]!)
         delete process.env[ENV_PORTS_POSSIBLE[i]!]
       }
-
-      // Cleanup
-      cleanupEnvVariables()
     })
+
+    afterEach(cleanupEnvVariables)
   })
 
   describe('getListenHostname', () => {
