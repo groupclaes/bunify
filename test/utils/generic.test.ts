@@ -4,9 +4,10 @@ import { Bunify } from '../../lib';
 
 describe('Generic', () => {
   describe('isPromiseLike', () => {
-    test('should return true if actual promise is tested', () => {
-      expect(isPromiseLike(Promise.resolve('yeet'))).toBeTrue()
-    })
+    test('should return true if actual promise is tested',
+      () => expect( isPromiseLike(Promise.resolve('yeet')) ).toBeTrue()
+    )
+
     test.each([ null, undefined, false ])('should return false if nullish',
       (value) => expect( isPromiseLike(value) ).toBeFalse()
     )
@@ -25,8 +26,8 @@ describe('Generic', () => {
       (value) => expect( isObject(value) ).toBeFalse()
     )
 
-    test.each([ 'string', 1, true, false ])('should return false if not an object like', (value) => {
-      expect(isObject(value)).toBeFalse()
-    })
+    test.each([ 'string', 1, true, false ])('should return false if not an object like',
+      (value) => expect( isObject(value) ).toBeFalse()
+    )
   })
 })
