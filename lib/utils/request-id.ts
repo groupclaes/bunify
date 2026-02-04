@@ -4,7 +4,8 @@ import type { Bunify } from "../bunify";
 export const BUNIFY_DEFAULT_REQUEST_ID_HEADER = 'request-id'
 
 /**
- * Id-based
+ * The default incremental integer-based request-id generator
+ * Tries to read the idHeader first, if configured.
  * 
  * @param bunify 
  * @returns 
@@ -25,6 +26,13 @@ export function defaultRequestIdGeneratorFactory(bunify: Bunify): (request: BunR
   }
 }
 
+/**
+ * A UUID-based request-id generator
+ * Useful for distributed systems and/or microsystems
+ * 
+ * @param bunify 
+ * @returns 
+ */
 export function requestUUIDGeneratorFactory(bunify: Bunify): (request: BunRequest) => string | number {
 
   if (bunify.requestOptions?.idHeader === false) {
