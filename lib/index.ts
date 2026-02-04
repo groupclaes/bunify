@@ -4,4 +4,4 @@ export { Bunify } from './bunify'
 
 export type { BunifyOptions } from './options';
 
-export { defaultRequestIdGeneratorFactory, defaultRequestUUIDGeneratorFactory } from './utils/request-id'
+export { defaultRequestIdGeneratorFactory, requestUUIDGeneratorFactory } from './utils/request-id'
