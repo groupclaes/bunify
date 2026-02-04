@@ -1,22 +1,46 @@
 import type pino from "pino";
-import type { Bunify, BunifyInstance } from "./bunify";
+import type { Bunify } from "./bunify";
 import { BunifyError } from "./errors/bunify-error";
 import type { BunRequest } from "bun";
+import type { RequestRoute } from "./models/request-route";
+
+
+export enum RequestLifecycle {
+  /**
+   * First call ran right after a request is received, and the id has been generated
+   */
+  OnRequest = 'onRequest',
+  PreParsing = 'preParsing',
+  PreValidation = 'preValidation',
+  PreHandler = 'preHandler',
+  PreSerialization = 'preSerialization',
+  OnError = 'onError',
+  OnSend = 'onSend',
+  OnResponse = 'onResponse',
+  OnTimeout = 'onTimeout',
+  OnRequestAbort = 'onRequestAbort'
+}
 
 export class BunifyRequest implements BunRequest {
-  private readonly _bunify: Bunify
   private readonly _request: BunRequest
-
-  readonly requestId: string | number
-  readonly log: pino.Logger | undefined
-
 
   /**
    * Parent bunify instance serving the request
    */
-  get bunify(): BunifyInstance {
-    return this._bunify
-  }
+  readonly bunify: Bunify
+  /**
+   * The route this request was made from
+   */
+  readonly route: RequestRoute
+
+  readonly traceId?: string
+  readonly requestId: string | number
+  readonly log: pino.Logger | undefined
+
+  readonly clientIp?: string
+  readonly clientPort?: number
+  readonly clientIpFamily?: 'IPv6' | 'IPv4'
+
 
   get params() {
     return this._request.params
@@ -119,11 +143,18 @@ export class BunifyRequest implements BunRequest {
   }
 
 
-  constructor(bunify: Bunify, request: BunRequest) {
-    this._bunify = bunify
+  constructor(bunify: Bunify, request: BunRequest, route: RequestRoute) {
+    this.bunify = bunify
+    this.route = route
     this._request = request
 
+    const clientSocket = ((bunify as any)._server as Bun.Server<any>).requestIP(request)
+    this.clientIp = clientSocket?.address
+    this.clientPort = clientSocket?.port
+    this.clientIpFamily = clientSocket?.family
+
     this.requestId = this.getRequestId()
+    this.traceId = this.getTraceId()
 
     if (bunify.requestOptions?.logEcsFields) {
       this.log = bunify.log?.child({
@@ -131,16 +162,28 @@ export class BunifyRequest implements BunRequest {
           request: {
             id: this.requestId,
             method: this._request.method,
-            referrer: this._request.referrer,
-            mime_type: this._request.headers.get('content-type'),
-            body: {
-              bytes: this._request.headers.get('content-length')
-            }
+            // referrer: this._request.referrer,
+            // mime_type: this._request.headers.get('content-type'),
+            // body: {
+            //   bytes: this._request.headers.get('content-length')
+            // }
           }
-        }
+        },
+        url: {
+          path: this._request.url
+        },
+        client: bunify.requestOptions?.logIp ? {
+          address: this.clientIp,
+          ip: this.clientIp,
+          port: this.clientPort,
+        } : undefined
       })
     } else {
-      this.log = bunify.log?.child({ 'reqId': this.requestId })
+      this.log = bunify.log?.child({
+        'reqId': this.requestId,
+        'clientIp': bunify.requestOptions?.logIp ? this.clientIp : undefined,
+        'clientPort': bunify.requestOptions?.logIp ? this.clientPort : undefined
+      })
     }
   }
 
@@ -148,9 +191,18 @@ export class BunifyRequest implements BunRequest {
    * Extract the request id from the header
    */
   private getRequestId(): string | number {
-    if (this._bunify.requestOptions?.genReqId)
-      return this._bunify.requestOptions.genReqId(this._request)
+    if (this.bunify.requestOptions?.genReqId)
+      return this.bunify.requestOptions.genReqId(this._request)
 
     throw new BunifyError('No correct requestId handler has been configured!')
+  }
+
+  /**
+   * Extract the trace identifier from the header (if configured)
+   */
+  private getTraceId(): string | undefined {
+    if (this.bunify.requestOptions?.traceIdHeader) {
+      return this._request.headers.get(this.bunify.requestOptions?.traceIdHeader) ?? undefined
+    }
   }
 }
