@@ -2,7 +2,6 @@ import type { LoggerOptions } from 'pino'
 import { BunifyOptionsError } from './errors'
 import type { BunRequest, TLSOptions } from 'bun'
 import type pino from 'pino'
-import type { BunifyRequest } from './request'
 
 /**
  * @internal
@@ -107,10 +106,19 @@ export interface BunifyOptions {
      */
     logEcsFields?: boolean
     /**
-     * Specify the request header to use as request-id/trace-id
+     * Specify the request header to use as request-id/transaction-id
      * @default "request-id"
      */
     idHeader?: boolean | string
+    /**
+     * Specify the trace identifier header 
+     */
+    traceIdHeader?: string
+    /**
+     * Time out a request after a certain time (in seconds)
+     * @default 0 "Timeout disabled"
+     */
+    defaultTimeout?: number
     /**
      * Function to generate the request id
      * 
