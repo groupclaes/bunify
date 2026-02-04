@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach } from 'bun:test'
-import { Bunify, defaultRequestIdGeneratorFactory, defaultRequestUUIDGeneratorFactory } from '../../lib'
+import { describe, test, expect } from 'bun:test'
+import { Bunify, defaultRequestIdGeneratorFactory, requestUUIDGeneratorFactory } from '../../lib'
 import type { BunRequest } from 'bun'
 
 describe('RequestId', () => {
@@ -59,11 +59,11 @@ describe('RequestId', () => {
   })
 
 
-  describe('defaultRequestUUIDGeneratorFactory', () => {
+  describe('requestUUIDGeneratorFactory', () => {
     test('should return a requestId generator that generates random UUIDv7s', () => {
       const bunify = { requestOptions: { idHeader: false } } as unknown as Bunify
 
-      const generator = defaultRequestUUIDGeneratorFactory(bunify)
+      const generator = requestUUIDGeneratorFactory(bunify)
 
       const generatedResult = generator({} as unknown as BunRequest)
       
@@ -75,7 +75,7 @@ describe('RequestId', () => {
       const bunify = { requestOptions: { idHeader: 'non-existant' } } as unknown as Bunify
       const fakeRequest = { headers: { get: () => null }} as unknown as BunRequest
 
-      const generator = defaultRequestUUIDGeneratorFactory(bunify)
+      const generator = requestUUIDGeneratorFactory(bunify)
 
       const generatedResult = generator(fakeRequest)
       
@@ -86,7 +86,7 @@ describe('RequestId', () => {
       const bunify = { requestOptions: { idHeader: 'non-existant' } } as unknown as Bunify
       const fakeRequest = { headers: { get: () => '019c1f51-6062-7000-9486-835eb27f8919' }} as unknown as BunRequest
 
-      const generator = defaultRequestUUIDGeneratorFactory(bunify)
+      const generator = requestUUIDGeneratorFactory(bunify)
 
       const generatedResult = generator(fakeRequest)
       

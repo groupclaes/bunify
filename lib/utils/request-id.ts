@@ -3,7 +3,12 @@ import type { Bunify } from "../bunify";
 
 export const BUNIFY_DEFAULT_REQUEST_ID_HEADER = 'request-id'
 
-
+/**
+ * Id-based
+ * 
+ * @param bunify 
+ * @returns 
+ */
 export function defaultRequestIdGeneratorFactory(bunify: Bunify): (request: BunRequest) => string | number {
   (bunify as any)._next_request_id = 1
   
@@ -20,7 +25,7 @@ export function defaultRequestIdGeneratorFactory(bunify: Bunify): (request: BunR
   }
 }
 
-export function defaultRequestUUIDGeneratorFactory(bunify: Bunify): (request: BunRequest) => string | number {
+export function requestUUIDGeneratorFactory(bunify: Bunify): (request: BunRequest) => string | number {
 
   if (bunify.requestOptions?.idHeader === false) {
     return (_: BunRequest) => Bun.randomUUIDv7()
