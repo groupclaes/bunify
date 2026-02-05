@@ -162,6 +162,7 @@ export class BunifyRequest implements BunRequest {
           request: {
             id: this.requestId,
             method: this._request.method,
+            // TO-DO - This should be logged once per request with request logging
             // referrer: this._request.referrer,
             // mime_type: this._request.headers.get('content-type'),
             // body: {
@@ -172,17 +173,19 @@ export class BunifyRequest implements BunRequest {
         url: {
           path: this._request.url
         },
-        client: bunify.requestOptions?.logIp ? {
-          address: this.clientIp,
-          ip: this.clientIp,
-          port: this.clientPort,
-        } : undefined
+        // TO-DO - This should be logged once per request with request logging
+        // client: bunify.requestOptions?.logIp ? {
+        //   address: this.clientIp,
+        //   ip: this.clientIp,
+        //   port: this.clientPort,
+        // } : undefined
       })
     } else {
       this.log = bunify.log?.child({
         'reqId': this.requestId,
-        'clientIp': bunify.requestOptions?.logIp ? this.clientIp : undefined,
-        'clientPort': bunify.requestOptions?.logIp ? this.clientPort : undefined
+        // TO-DO - This should be logged once per request with request logging
+        // 'clientIp': bunify.requestOptions?.logIp ? this.clientIp : undefined,
+        // 'clientPort': bunify.requestOptions?.logIp ? this.clientPort : undefined
       })
     }
   }
