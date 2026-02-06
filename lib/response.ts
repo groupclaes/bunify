@@ -31,10 +31,20 @@ export class BunifyResponse {
     return this._statusText
   }
 
+  set statusText(value: string) {
+    this._statusText = value
+  }
+
+  /**
+   * Check if the response status is ok vs in error
+   */
   get ok() {
     return this._ok
   }
 
+  /**
+   * Check if the request has already been sent
+   */
   get sent() {
     return this._sent
   }
@@ -46,7 +56,6 @@ export class BunifyResponse {
   get elapsedTime() {
     return (this._sentTime ?? Bun.nanoseconds()) - this._startTime
   }
-
 
 
   constructor(bunify: Bunify, init?: BunifyResponseInit) {
@@ -180,14 +189,13 @@ export class BunifyResponse {
    * @returns 
    */
   send(data?: BodyInit | Response): Response {
-    this.markAsSent()
     if (data instanceof Response) {
       this._statusCode = data.status,
       this._statusText = data.statusText
-      this._
 
       return data
     }
+
     return new Response(data, { status: this.statusCode, statusText: this.statusText, headers: this.headers })
   }
 
