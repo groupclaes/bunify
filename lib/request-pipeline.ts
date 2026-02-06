@@ -1,5 +1,10 @@
 import { BUNIFY_ERR_REQUEST_HOOK_RETURNS_RESPONSE, BUNIFY_ERR_RESPONSE_DOESNT_MATCH } from "./errors"
-import type { RequestHandlerFunctionResult, RequestHook, RequestHookOrHandler, RequestHookResult } from "./models/request-route"
+import type {
+  RequestHandlerFunctionResult,
+  RequestHook,
+  RequestHookOrHandler,
+  RequestHookResult
+} from "./models/request-route"
 import type { BunifyRequest } from "./request"
 import { BunifyResponse } from "./response"
 import { isObject, isPromiseLike } from "./utils/generic"
@@ -10,16 +15,24 @@ import { isObject, isPromiseLike } from "./utils/generic"
  * @param response received response from the hook
  * @param requestResponse 
  */
-async function parseBunifyResponse(response: Response | BunifyResponse, requestResponse: BunifyResponse): Promise<Response | undefined> {
-  if (!response)
+function parseBunifyResponse(requestResponse: BunifyResponse,
+  response?: Response | BunifyResponse): Response | undefined {
+  if (!response) {
     return
+  }
 
   if (response instanceof BunifyResponse) {
     if (response !== requestResponse)
       throw BUNIFY_ERR_RESPONSE_DOESNT_MATCH
+
+    return response.send()
   } else {
     // TODO - Update the requestResponse with the contents of the returned plain Response object
+    requestResponse.code(response.status)
+    requestResponse.statusText = response.statusText
   }
+
+  return response
 }
 
 async function catchResponseOrContinue(handleResult: RequestHookResult | RequestHandlerFunctionResult,
@@ -37,26 +50,22 @@ async function catchResponseOrContinue(handleResult: RequestHookResult | Request
     resultResponse = handleResult as BunifyResponse | Response
   }
 
-  if (resultResponse) {
-    resultResponse = await parseBunifyResponse(resultResponse, bunifyResponse)
-    if (resultResponse) {
-      return resultResponse
-    }
-  }
+  resultResponse = parseBunifyResponse(bunifyResponse, resultResponse)
+  if (resultResponse)
+    return resultResponse
 
   // Don't return anything otherwise
 }
 
 export async function executeRequestHook(hooksOrHandler: RequestHookOrHandler,
-  request: BunifyRequest, bunifyResponse: BunifyResponse,
-  error?: Error): Promise<Response | void> {
+  request: BunifyRequest, bunifyResponse: BunifyResponse): Promise<Response | void> {
 
   let resultResponse: BunifyResponse | Response | undefined | void
 
   //
-  for (const bunifyHook of Array.isArray(hooksOrHandler) ? hooksOrHandler : [ hooksOrHandler ]) {
-    if (typeof bunifyHook === 'function') {
-      resultResponse = await catchResponseOrContinue(bunifyHook(request, error), bunifyResponse)
+  for (const requestHook of Array.isArray(hooksOrHandler) ? hooksOrHandler : [ hooksOrHandler ]) {
+    if (typeof requestHook === 'function') {
+      resultResponse = await catchResponseOrContinue(requestHook(request), bunifyResponse)
       if (resultResponse instanceof Response)
         return resultResponse
     } else {
@@ -66,16 +75,16 @@ export async function executeRequestHook(hooksOrHandler: RequestHookOrHandler,
   }
 }
 
-export async function executeRequestAndRouteHook(requestHook: RequestHook[], routeHook: RequestHook | RequestHook[] | undefined,
-  bunifyRequest: BunifyRequest, bunifyResponse: BunifyResponse,
-  error?: Error): Promise<Response | void> {
+export async function executeRequestAndRouteHook(requestHook: RequestHook[],
+  routeHook: RequestHook | RequestHook[] | undefined, bunifyRequest: BunifyRequest,
+  bunifyResponse: BunifyResponse): Promise<Response | void> {
   
-  let result = await executeRequestHook(requestHook, bunifyRequest, bunifyResponse, error)
+  let result = await executeRequestHook(requestHook, bunifyRequest, bunifyResponse)
   if (result instanceof Response) return result
 
   // Route hook as last
   if (routeHook) {
-    result = await executeRequestHook(routeHook, bunifyRequest, bunifyResponse, error)
+    result = await executeRequestHook(routeHook, bunifyRequest, bunifyResponse)
     if (result instanceof Response) return result
   }
 }
