@@ -89,44 +89,46 @@ export interface BunifyOptions {
    */
   development?: boolean,
   tls?: TLSOptions | TLSOptions[],
-  request?: {
-    /**
-     * Enable request time tracking
-     * @default false
-     */
-    executionTime?: boolean
-    /**
-     * Log the IP-address
-     * @default false
-     */
-    logIp?: boolean
-    /**
-     * Log all the HTTP request and response fields in ecs format
-     * @default false
-     */
-    logEcsFields?: boolean
-    /**
-     * Specify the request header to use as request-id/transaction-id
-     * @default "request-id"
-     */
-    idHeader?: boolean | string
-    /**
-     * Specify the trace identifier header 
-     */
-    traceIdHeader?: string
-    /**
-     * Time out a request after a certain time (in seconds)
-     * @default 0 "Timeout disabled"
-     */
-    defaultTimeout?: number
-    /**
-     * Function to generate the request id
-     * 
-     * @param request 
-     * @returns 
-     */
-    genReqId?: (request: BunRequest) => number | string
-  }
+  request?: BunifyRequestOptions
+}
+
+export interface BunifyRequestOptions {
+  /**
+   * Enable request time tracking
+   * @default false
+   */
+  executionTime?: boolean
+  /**
+   * Log the IP-address
+   * @default false
+   */
+  logIp?: boolean
+  /**
+   * Log all the HTTP request and response fields in ecs format
+   * @default false
+   */
+  logEcsFields?: boolean
+  /**
+   * Specify the request header to use as request-id/transaction-id
+   * @default "request-id"
+   */
+  idHeader?: boolean | string
+  /**
+   * Specify the trace identifier header 
+   */
+  traceIdHeader?: string
+  /**
+   * Time out a request after a certain time (in seconds)
+   * @default 0 "Timeout disabled"
+   */
+  defaultTimeout?: number
+  /**
+   * Function to generate the request id
+   * 
+   * @param request 
+   * @returns 
+   */
+  genReqId?: (request: BunRequest) => number | string
 }
 
 
