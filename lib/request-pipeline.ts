@@ -15,7 +15,7 @@ import { isObject, isPromiseLike } from "./utils/generic"
  * @param response received response from the hook
  * @param requestResponse 
  */
-function parseBunifyResponse(requestResponse: BunifyResponse,
+export function parseBunifyResponse(requestResponse: BunifyResponse,
   response?: Response | BunifyResponse): Response | undefined {
   if (!response) {
     return
@@ -35,8 +35,8 @@ function parseBunifyResponse(requestResponse: BunifyResponse,
   return response
 }
 
-async function catchResponseOrContinue(handleResult: RequestHookResult | RequestHandlerFunctionResult,
-  bunifyResponse: BunifyResponse): Promise<Response | void> {
+export async function catchResponseOrContinue(handleResult: RequestHookResult | RequestHandlerFunctionResult,
+  bunifyResponse: BunifyResponse): Promise<Response | undefined> {
   let resultResponse: BunifyResponse | Response | undefined
 
   if (isPromiseLike(handleResult)) {
@@ -57,15 +57,15 @@ async function catchResponseOrContinue(handleResult: RequestHookResult | Request
   // Don't return anything otherwise
 }
 
-export async function executeRequestHook(hooksOrHandler: RequestHookOrHandler,
+export async function executeRequestHook(requestHookInput: RequestHook | RequestHook[],
   request: BunifyRequest, bunifyResponse: BunifyResponse): Promise<Response | void> {
 
   let resultResponse: BunifyResponse | Response | undefined | void
 
   //
-  for (const requestHook of Array.isArray(hooksOrHandler) ? hooksOrHandler : [ hooksOrHandler ]) {
+  for (const requestHook of Array.isArray(requestHookInput) ? requestHookInput : [ requestHookInput ]) {
     if (typeof requestHook === 'function') {
-      resultResponse = await catchResponseOrContinue(requestHook(request), bunifyResponse)
+      resultResponse = await catchResponseOrContinue(requestHook(request, bunifyResponse), bunifyResponse)
       if (resultResponse instanceof Response)
         return resultResponse
     } else {
@@ -75,7 +75,7 @@ export async function executeRequestHook(hooksOrHandler: RequestHookOrHandler,
   }
 }
 
-export async function executeRequestAndRouteHook(requestHook: RequestHook[],
+export async function executeRequestAndRouteHook(requestHook: RequestHook | RequestHook[],
   routeHook: RequestHook | RequestHook[] | undefined, bunifyRequest: BunifyRequest,
   bunifyResponse: BunifyResponse): Promise<Response | void> {
   
