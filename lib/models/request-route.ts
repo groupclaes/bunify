@@ -5,10 +5,10 @@ import type { BunifyResponse } from "../response"
 
 export type RequestMethod = "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "CONNECT" | "TRACE" | "PATCH" 
 export type RequestHookResult = BunifyResponse | Response | void | Promise<BunifyResponse | Response | void>
-export type RequestHook = (request: BunifyRequest, error?: Error) => RequestHookResult
+export type RequestHook = (request: BunifyRequest, response: BunifyResponse) => RequestHookResult
 
 export type RequestHandlerFunctionResult = BunifyResponse | Response | Promise<BunifyResponse | Response>
-export type RequestHandlerFunction = (request: BunifyRequest) => RequestHandlerFunctionResult
+export type RequestHandlerFunction = (request: BunifyRequest, response: BunifyResponse) => RequestHandlerFunctionResult
 
 export type RequestHandler = BunifyResponse | Response | RequestHandlerFunction
 
@@ -33,7 +33,7 @@ export interface RequestRoute {
   /**
    * Actual request handler to execute after the pre-hooks, and before the post-hooks
    */
-  handler: RequestHandler
+  handler: RequestHandlerFunction
 
   /**
    * Lifecycle hooks ran as last hook after te Bunify configured hooks
