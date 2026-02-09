@@ -1,10 +1,11 @@
 import type { BodyInit } from "bun";
 import type { Bunify } from "./bunify";
 import { isValidRedirectStatusCode, validateRedirectStatusCode, validateStatusCode } from "./utils/status-code";
+import type { BunifyRequest } from "./request";
 
 export interface BunifyResponseInit extends ResponseInit {
   readonly url: string
-  headers: Bun.__internal.BunHeadersOverride
+  headers?: Bun.__internal.BunHeadersOverride
 }
 
 export class BunifyResponse {
@@ -16,6 +17,9 @@ export class BunifyResponse {
   private _statusText = 'OK'
   private _ok: boolean = true
   private _sent: boolean = false
+  private _body?: BodyInit
+
+  private _request: BunifyRequest
   
   readonly headers: Headers
 
@@ -42,6 +46,10 @@ export class BunifyResponse {
     return this._ok
   }
 
+  get url() {
+    return this._request.url
+  }
+
   /**
    * Check if the request has already been sent
    */
@@ -58,8 +66,9 @@ export class BunifyResponse {
   }
 
 
-  constructor(bunify: Bunify, init?: BunifyResponseInit) {
-    this._bunify = bunify
+  constructor(bunifyRequest: BunifyRequest, init?: BunifyResponseInit) {
+    this._request = bunifyRequest
+    this._bunify = bunifyRequest.bunify
     this._startTime = Bun.nanoseconds()
 
     if (init) {
@@ -194,9 +203,15 @@ export class BunifyResponse {
       this._statusText = data.statusText
 
       return data
+    } else {
+      this._body = data
     }
 
-    return new Response(data, { status: this.statusCode, statusText: this.statusText, headers: this.headers })
+    return new Response(data, {
+      status: this._statusCode,
+      statusText: this._statusText,
+      headers: this.headers
+    })
   }
 
   private markAsSent() {
