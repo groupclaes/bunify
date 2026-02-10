@@ -2,19 +2,19 @@
   "name": "@groupclaes/bunify",
   "version": "0.0.1",
   "module": "lib/index.ts",
-  "description": "Fastify but for Bun",
-  "type": "module",
-  "scripts": {
-    "test": "bun test --coverage --randomize --coverage-reporter=text --coverage-reporter=lcov"
-  },
-  "exports": "./lib/index.ts",
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
+  "exports": "./lib/index.ts",
+  "description": "Fastify but for Bun",
+  "scripts": {
+    "test": "bun test --coverage --randomize --coverage-reporter=text --coverage-reporter=lcov"
+  },
+  "type": "module",
   "dependencies": {
-    "pino": "^10.3.0"
+    "@logtape/logtape": "^2.0.2"
   }
 }
