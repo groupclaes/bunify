@@ -1,7 +1,8 @@
-import { test, describe, expect, afterEach } from 'bun:test'
+import { test, describe, expect, afterEach, beforeEach, afterAll, mock } from 'bun:test'
 
-import { Bunify } from '../lib/bunify'
+import { Bunify, BunifyLifecycle, type BunifyInstance } from '../lib/bunify'
 import { ENV_PORTS_POSSIBLE } from '../lib/options'
+import { BunifyRequest, BunifyResponse, RequestLifecycle, type BunifyHook } from '../lib'
 
 describe('Bunify', () => {
   describe('getPort', () => {
@@ -90,5 +91,64 @@ describe('Bunify', () => {
 
       expect(getListenHostname()).toBe('0.0.0.0')
     })
+  })
+
+
+  describe('addHook', () => {
+    let bunify: Bunify
+    beforeEach(() => {
+      bunify = new Bunify({})
+    })
+
+
+    test.each(Object.values(RequestLifecycle))(
+      'should append hook to the request hooks',
+      (lifecycle: RequestLifecycle) => {
+        const mockHook = mock((request: BunifyRequest, response: BunifyResponse) => {})
+
+        bunify.addHook(lifecycle, mockHook)
+
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHook)
+      })
+
+
+    test.each(Object.values(RequestLifecycle))(
+      'should append multiple hook callers to the request hooks',
+      (lifecycle: RequestLifecycle) => {
+        const mockHook = mock((request: BunifyRequest, response: BunifyResponse) => {})
+        const mockHookTwo = mock((request: BunifyRequest, response: BunifyResponse) => {})
+        const mockHookThree = mock((request: BunifyRequest, response: BunifyResponse) => {})
+
+        bunify.addHook(lifecycle, [ mockHook, mockHookTwo, mockHookThree ])
+
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHook)
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHookTwo)
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHookThree)
+      })
+
+    test.each(Object.values(BunifyLifecycle))(
+      'should append hook to the bunify hooks',
+      (lifecycle: BunifyLifecycle) => {
+        const mockHook = mock(((bunify: BunifyInstance) => {}) as BunifyHook)
+
+        bunify.addHook(lifecycle, mockHook)
+
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHook)
+      })
+
+
+    test.each(Object.values(BunifyLifecycle))(
+      'should append multiple hook handlers to the bunify hooks',
+      (lifecycle: BunifyLifecycle) => {
+        const mockHook = mock(((bunify: BunifyInstance) => {}) as BunifyHook)
+        const mockHookTwo = mock(((bunify: BunifyInstance) => {}) as BunifyHook)
+        const mockHookThree = mock(((bunify: BunifyInstance) => {}) as BunifyHook)
+
+        bunify.addHook(lifecycle, [ mockHook, mockHookTwo, mockHookThree ])
+
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHook)
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHookTwo)
+        expect((bunify as any)._hooks[lifecycle]).toContain(mockHookThree)
+      })
   })
 })
