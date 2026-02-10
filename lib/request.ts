@@ -3,6 +3,7 @@ import type { Bunify } from "./bunify";
 import { BunifyError } from "./errors/bunify-error";
 import type { BunRequest } from "bun";
 import type { RequestRoute } from "./models/request-route";
+import { BUNIFY_ERR_REQUEST_INVALID_REQID_HANDLER } from "./errors";
 
 
 export enum RequestLifecycle {
@@ -23,6 +24,9 @@ export enum RequestLifecycle {
 
 export class BunifyRequest implements BunRequest {
   private readonly _request: BunRequest
+  private _clientIp?: string
+  private _clientPort?: number
+  private _clientIpFamily?: 'IPv6' | 'IPv4'
 
   /**
    * Parent bunify instance serving the request
@@ -37,9 +41,17 @@ export class BunifyRequest implements BunRequest {
   readonly requestId: string | number
   readonly log: pino.Logger | undefined
 
-  readonly clientIp?: string
-  readonly clientPort?: number
-  readonly clientIpFamily?: 'IPv6' | 'IPv4'
+  get clientIp() {
+    return this._clientIp
+  }
+
+  get clientPort() {
+    return this._clientPort
+  }
+
+  get clientIpFamily() {
+    return this._clientIpFamily
+  }
 
 
   get params() {
@@ -148,13 +160,10 @@ export class BunifyRequest implements BunRequest {
     this.route = route
     this._request = request
 
-    const clientSocket = ((bunify as any)._server as Bun.Server<any>).requestIP(request)
-    this.clientIp = clientSocket?.address
-    this.clientPort = clientSocket?.port
-    this.clientIpFamily = clientSocket?.family
-
     this.requestId = this.getRequestId()
     this.traceId = this.getTraceId()
+
+    this.getRequestIp()
 
     if (bunify.requestOptions?.logEcsFields) {
       this.log = bunify.log?.child({
@@ -197,7 +206,7 @@ export class BunifyRequest implements BunRequest {
     if (this.bunify.requestOptions?.genReqId)
       return this.bunify.requestOptions.genReqId(this._request)
 
-    throw new BunifyError('No correct requestId handler has been configured!')
+    throw BUNIFY_ERR_REQUEST_INVALID_REQID_HANDLER
   }
 
   /**
@@ -206,6 +215,21 @@ export class BunifyRequest implements BunRequest {
   private getTraceId(): string | undefined {
     if (this.bunify.requestOptions?.traceIdHeader) {
       return this._request.headers.get(this.bunify.requestOptions?.traceIdHeader) ?? undefined
+    }
+  }
+
+  /**
+   * Retrieve the request id.
+   * A placeholder for a future proxy handler
+   */
+  private getRequestIp() {
+    if ((this.bunify as any)._server) {
+      const clientSocket = ((this.bunify as any)._server as Bun.Server<any>).requestIP(this._request)
+      this._clientIp = clientSocket?.address
+      this._clientPort = clientSocket?.port
+      this._clientIpFamily = clientSocket?.family
+
+      return clientSocket
     }
   }
 }
