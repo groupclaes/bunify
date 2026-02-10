@@ -3,6 +3,9 @@ import type { Bunify } from "../bunify";
 
 export const BUNIFY_DEFAULT_REQUEST_ID_HEADER = 'request-id'
 
+export type BunifyRequestIdFactory = (bunify: Bunify) =>
+  (request: BunRequest) => string | number
+
 /**
  * The default incremental integer-based request-id generator
  * Tries to read the idHeader first, if configured.

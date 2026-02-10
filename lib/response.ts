@@ -18,6 +18,10 @@ export class BunifyResponse {
   private _request: BunifyRequest
   
   readonly headers: Headers
+  
+  get log() {
+    return this._request.log
+  }
 
   get statusCode() {
     return this._statusCode

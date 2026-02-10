@@ -9,6 +9,7 @@ export { BunifyResponse } from './response';
 export { Bunify } from './bunify'
 
 export type { BunifyOptions } from './options';
+export type { BunifyModuleRegistrator } from './bunify-module'
 
 export {
   defaultRequestIdGeneratorFactory,
@@ -16,3 +17,4 @@ export {
 } from './utils/request-id'
 
 export * from './models'
+export * from './modules'

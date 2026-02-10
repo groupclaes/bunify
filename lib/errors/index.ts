@@ -19,3 +19,6 @@ export const BUNIFY_ERR_REQUEST_HOOK_RETURNS_RESPONSE = new BunifyError('Hooks c
 
 export const BUNIFY_ERR_RESPONSE_STATUS_CODE_INVALID = new BunifyResponseError('Invalid statuscode was provided')
 export const BUNIFY_ERR_RESPONSE_DOESNT_MATCH = new BunifyResponseError('The returned response doesn\'t match the created response!')
+
+
+export const BUNIFY_ERR_MODULE_PREFIX_MUST_START_WITH_SLASH = new BunifyError('A module prefix must start with a prefix slash!')

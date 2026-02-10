@@ -1,9 +1,8 @@
-import type pino from "pino";
 import type { Bunify } from "./bunify";
-import { BunifyError } from "./errors/bunify-error";
 import type { BunRequest } from "bun";
 import type { RequestRoute } from "./models/request-route";
 import { BUNIFY_ERR_REQUEST_INVALID_REQID_HANDLER } from "./errors";
+import type { Logger } from "@logtape/logtape";
 
 
 export enum RequestLifecycle {
@@ -39,7 +38,7 @@ export class BunifyRequest implements BunRequest {
 
   readonly traceId?: string
   readonly requestId: string | number
-  readonly log: pino.Logger | undefined
+  readonly log: Logger | undefined
 
   get clientIp() {
     return this._clientIp
@@ -166,36 +165,33 @@ export class BunifyRequest implements BunRequest {
     this.getRequestIp()
 
     if (bunify.requestOptions?.logEcsFields) {
-      this.log = bunify.log?.child({
+      this.log = bunify.log?.getChild("request").with({
         http: {
           request: {
             id: this.requestId,
-            method: this._request.method,
-            // TO-DO - This should be logged once per request with request logging
-            // referrer: this._request.referrer,
-            // mime_type: this._request.headers.get('content-type'),
-            // body: {
-            //   bytes: this._request.headers.get('content-length')
-            // }
+            method: this._request.method
           }
         },
         url: {
           path: this._request.url
-        },
-        // TO-DO - This should be logged once per request with request logging
-        // client: bunify.requestOptions?.logIp ? {
-        //   address: this.clientIp,
-        //   ip: this.clientIp,
-        //   port: this.clientPort,
-        // } : undefined
+        }
       })
+
+      if (bunify.requestOptions.traceIdHeader) {
+        this.log = this.log?.with({
+          id: this.traceId
+        })
+      }
     } else {
-      this.log = bunify.log?.child({
-        'reqId': this.requestId,
-        // TO-DO - This should be logged once per request with request logging
-        // 'clientIp': bunify.requestOptions?.logIp ? this.clientIp : undefined,
-        // 'clientPort': bunify.requestOptions?.logIp ? this.clientPort : undefined
+      this.log = bunify.log?.getChild("Request").with({
+        reqId: this.requestId,
+        traceId: this.traceId ?? undefined
       })
+
+
+      if (bunify.requestOptions?.traceIdHeader) {
+        this.log = this.log?.with({ traceId: this.traceId })
+      }
     }
   }
 
@@ -204,7 +200,7 @@ export class BunifyRequest implements BunRequest {
    */
   private getRequestId(): string | number {
     if (this.bunify.requestOptions?.genReqId)
-      return this.bunify.requestOptions.genReqId(this._request)
+      return (this.bunify.requestOptions.genReqId as (request: BunRequest) => string | number)(this._request)
 
     throw BUNIFY_ERR_REQUEST_INVALID_REQID_HANDLER
   }

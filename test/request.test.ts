@@ -1,8 +1,8 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test, type Mock } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 
 import type { BunRequest } from 'bun';
-import { Bunify, BunifyRequest, BunifyResponse, defaultRequestIdGeneratorFactory, type RequestRoute } from '../lib';
-import pino from 'pino';
+import { Bunify, BunifyRequest, BunifyResponse, type RequestRoute } from '../lib';
+import { getLogger } from '@logtape/logtape';
 
 describe('Request', () => {
   describe('__constructor__', () => {
@@ -11,7 +11,7 @@ describe('Request', () => {
         requestOptions: {
           genReqId: () => 10
         },
-        log: pino({ })
+        log: getLogger(["@groupclaes/bunify", "Testing", "Bunify"])
       } as unknown as Bunify
 
 

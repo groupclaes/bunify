@@ -48,4 +48,5 @@ export interface RequestRoute {
  */
 export interface _RequestRoute extends RequestRoute {
   internalHandler: (request: BunRequest, server?: Bun.Server<any>) => Promise<Response>
+  logLevel?: string
 }

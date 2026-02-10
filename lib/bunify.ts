@@ -1,4 +1,4 @@
-import pino from 'pino'
+import { configure, getConsoleSink, getJsonLinesFormatter, getLogger, type Logger } from '@logtape/logtape';
 import type { BunRequest } from 'bun';
 
 
@@ -18,11 +18,12 @@ import { type _RequestRoute, type RequestHandler, type RequestHandlerFunction, t
 
 import { defaultErrorHandlerFactory } from './errors/error-handler';
 import { BUNIFY_DEFAULT_REQUEST_ID_HEADER, defaultRequestIdGeneratorFactory } from './utils/request-id';
-import type { BunifyGenericHook, BunifyHook } from './models/application-hooks';
+import type { BunifyHook } from './models/application-hooks';
 
 import { BunifyResponse } from './response';
 import { BunifyRequest, RequestLifecycle } from './request';
 import { catchResponseOrContinue, executeRequestAndRouteHook } from './request-pipeline';
+import { registerBunifyModuleCorrectly, type BunifyModuleOptions, type BunifyModuleRegistrator } from './bunify-module';
 
 
 
@@ -37,11 +38,11 @@ export interface BunifyInstance {
    */
   get hostname(): string
   /**
-   * Returns the pino logger if logging is enabled
+   * Returns the LogTape logger if logging is enabled
    * 
    * @optional
    */
-  get log(): pino.Logger<never, any> | undefined
+  get log(): Logger | undefined
   /**
    * Server running status
    */
@@ -50,28 +51,6 @@ export interface BunifyInstance {
    * Configuration options for requests
    */
   get requestOptions(): BunifyRequestOptions | undefined
-
-  /**
-   * Start the Bunify server
-   * 
-   * @throws {BunifyError} if the server is already running
-   * @param hostname Override the configuration's listen addresses
-   * @param port Override the configuration's listen port
-   */
-  listen(hostname?: string, port?: number): Promise<BunifyInstance>
-
-  /**
-   * Reload the Bunify server, applying the new routes
-   * @throws {BunifyError} if server hasn't been started yet
-   */
-  reload(): Promise<BunifyInstance>
-  /**
-   * Stop the the Bunify server
-   * 
-   * @param kill Should the server be terminated, aborting all in-flight request
-   * @throws {BunifyError} if server hasn't been started yet
-   */
-  stop(kill?: boolean): Promise<BunifyInstance> 
 
   /**
    * Apply one or more request hook functions to the hooks lifecycle
@@ -157,13 +136,11 @@ export enum BunifyLifecycle {
   OnRegister = 'onRegister'
 }
 
-function loggerFactory(logOptions?: boolean | pino.LoggerOptions<never, boolean> | pino.Logger<never, boolean>): pino.Logger | undefined {
+function loggerFactory(logOptions?: boolean): Logger | undefined {
   if (logOptions) {
     if (logOptions === true) {
-      return pino()
+      return getLogger([""])
     }
-
-    return pino(logOptions)
   }
 }
 
@@ -171,7 +148,7 @@ function loggerFactory(logOptions?: boolean | pino.LoggerOptions<never, boolean>
  * Fastify functionality with Bun performance
  */
 export class Bunify implements BunifyInstance {
-  private readonly _baseLogger: pino.Logger | undefined
+  private readonly _baseLogger?: Logger
   private readonly _options: BunifyOptions
   private readonly _routes: Record<string, _RequestRoute>  = {}
   private readonly _hooks: Record<BunifyLifecycle | RequestLifecycle, BunifyHook[] | RequestHook[]> = {
@@ -198,7 +175,7 @@ export class Bunify implements BunifyInstance {
   }
 
   protected _server?: Bun.Server<any>
-  private _pino: pino.Logger | undefined
+  private _logger?: Logger
 
   private _errorHandler?: (error: Bun.ErrorLike) => BunifyResponse | Promise<BunifyResponse> | void | Promise<void>
 
@@ -211,7 +188,7 @@ export class Bunify implements BunifyInstance {
   }
 
   get log() {
-    return this._pino
+    return this._logger
   }
 
   get running() {
@@ -238,16 +215,59 @@ export class Bunify implements BunifyInstance {
       options.request.idHeader = BUNIFY_DEFAULT_REQUEST_ID_HEADER
     }
 
-    if (!options.request.genReqId) {
-      options.request.genReqId = defaultRequestIdGeneratorFactory(this)
+    // Ignore logging if set to false
+    if (options.request.genReqId !== false) {
+      if (!options.request.genReqId) {
+        // Use the factory if configured
+        if (options.request.genReqIdFactory) {
+          options.request.genReqId = options.request.genReqIdFactory(this)
+        } else {
+          // Fall back to the default request id factory
+          options.request.genReqId = defaultRequestIdGeneratorFactory(this)
+        }
+      } else {
+        // genReqId is true, use default generator
+        options.request.genReqId = defaultRequestIdGeneratorFactory(this)
+      }
     }
 
+    // Setup logging
+    if (typeof options.log === 'object') {
+      configure(options.log)
+    } else if (options.log !== false) {
+      configure({
+        sinks: {
+          console: getConsoleSink({
+            formatter: getJsonLinesFormatter()
+          })
+        },
+        loggers: [
+          {
+            category: "@groupclaes/bunify",
+            lowestLevel: "info",
+            sinks: ["console"],
+          },
+          {
+            category: ["logtape", "meta"],
+            lowestLevel: "warning",
+            sinks: ["console"],
+          },
+        ],
+      })
+    }
 
-    this._baseLogger = loggerFactory(options.log)
-    this._pino = this._baseLogger
+    this._baseLogger = options.log ? getLogger([ "@groupclaes/bunify" ]) : undefined
+    this._logger = this._baseLogger?.getChild('Bunify')
   }
 
-  async listen(hostname?: string, port?: number): Promise<BunifyInstance> {
+  /**
+   * Start the Bunify server
+   * 
+   * @throws {BunifyError} if the server is already running
+   * @param hostname Override the configuration's listen addresses
+   * @param port Override the configuration's listen port
+   */
+  async listen(hostname?: string, port?: number): Promise<Bunify> {
     if (this._server != null) {
       throw BUNIFY_ERR_ALREADY_RUNNING
     }
@@ -259,27 +279,35 @@ export class Bunify implements BunifyInstance {
     await this.executeBunifyHook(BunifyLifecycle.OnReady)
 
     if (!this._options.silent)
-      this._pino?.info({ service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` }}, `Starting Bunify server`)
+      this._logger?.info(`Starting Bunify server`,
+        { service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` } })
     this._server = Bun.serve(this.getServerSettings(hostname, port))
     
     await this.executeBunifyHook(BunifyLifecycle.OnListen)
 
     if (this._baseLogger) {
-      this._pino = this._baseLogger?.child({ service: { ephemeral_id: this._server.id } })
+      this._logger = this._baseLogger?.getChild('Bunify')
+        .with({ service: { ephemeral_id: this._server.id } })
     }
   
     if (!this._options.silent)
-      this._pino?.info({ service: { address: this._server.url }}, `Started Bunify server`)
+      this._logger?.info(`Started Bunify server`,
+        { service: { address: this._server.url }})
 
     return this
   }
 
-  async reload(): Promise<BunifyInstance> {
+  /**
+   * Reload the Bunify server, applying the new routes
+   * @throws {BunifyError} if server hasn't been started yet
+   */
+  async reload(): Promise<Bunify> {
     if (this._server == null)
       throw BUNIFY_ERR_NOT_RUNNING
 
     if (!this._options.silent)
-      this._pino?.info({ service: { address: this._server.url }},  `Reloading Bunify server`)
+      this._logger?.info(`Reloading Bunify server`,
+        { service: { address: this._server.url }})
 
     this._server.reload(this.getServerSettings(this._server.hostname, this._server.port))
 
@@ -288,23 +316,29 @@ export class Bunify implements BunifyInstance {
     return this
   }
 
-  async stop(kill: boolean = false): Promise<BunifyInstance> {
+  /**
+   * Stop the the Bunify server
+   * 
+   * @param kill Should the server be terminated, aborting all in-flight request
+   * @throws {BunifyError} if server hasn't been started yet
+   */
+  async stop(kill: boolean = false): Promise<Bunify> {
     if (this._server == null)
       throw BUNIFY_ERR_NOT_RUNNING
 
     await this.executeBunifyHook(BunifyLifecycle.PreClose)
     if (!this._options.silent)
-      this._pino?.debug(`${kill ? 'Killing' : 'Stopping'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
+      this._logger?.debug(`${kill ? 'Killing' : 'Stopping'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
 
     await this._server?.stop(kill)
 
     if (!this._options.silent)
-      this._pino?.debug(`${kill ? 'Killed' : 'Stopped'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
+      this._logger?.debug(`${kill ? 'Killed' : 'Stopped'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
     await this.executeBunifyHook(BunifyLifecycle.OnClose)
 
     // Remove server instance
     this._server = undefined
-    this._pino = this._baseLogger
+    this._logger = this._baseLogger
 
     return this
   }
@@ -312,10 +346,8 @@ export class Bunify implements BunifyInstance {
   /**
    * Register an extension
    */
-  register(): Bunify {
-    throw new BunifyError('Not implemented yet')
-
-    return this
+  register(moduleRegistrator: BunifyModuleRegistrator, options?: BunifyModuleOptions): Bunify {
+    return registerBunifyModuleCorrectly(this, moduleRegistrator, options)
   }
 
   /**
@@ -332,25 +364,25 @@ export class Bunify implements BunifyInstance {
 */
 
 
-  get(url: string, handler: RequestHandlerFunction): BunifyInstance {
+  get(url: string, handler: RequestHandlerFunction): Bunify {
     return this.addRoute({ url, handler, method: 'GET' })
   }
-  put(url: string, handler: RequestHandlerFunction): BunifyInstance {
+  put(url: string, handler: RequestHandlerFunction): Bunify {
     return this.addRoute({ url, handler, method: 'PUT' })
   }
-  post(url: string, handler: RequestHandlerFunction): BunifyInstance {
+  post(url: string, handler: RequestHandlerFunction): Bunify {
     return this.addRoute({ url, handler, method: 'POST' })
   }
-  patch(url: string, handler: RequestHandlerFunction): BunifyInstance {
+  patch(url: string, handler: RequestHandlerFunction): Bunify {
     return this.addRoute({ url, handler, method: 'PATCH' })
   }
-  delete(url: string, handler: RequestHandlerFunction): BunifyInstance  {
+  delete(url: string, handler: RequestHandlerFunction): Bunify  {
     return this.addRoute({ url, handler, method: 'DELETE' })
   }
-  head(url: string, handler: RequestHandlerFunction): BunifyInstance  {
+  head(url: string, handler: RequestHandlerFunction): Bunify  {
     return this.addRoute({ url, handler, method: 'HEAD' })
   }
-  trace(url: string, handler: RequestHandlerFunction): BunifyInstance  {
+  trace(url: string, handler: RequestHandlerFunction): Bunify  {
     return this.addRoute({ url, handler, method: 'TRACE' })
   }
 
@@ -360,7 +392,7 @@ export class Bunify implements BunifyInstance {
    * @param route 
    * @param override Override any existing route, and reload the server if running
    */
-  addRoute(route: RequestRoute, override?: boolean): BunifyInstance {
+  addRoute(route: RequestRoute, override?: boolean): Bunify {
     if (!route.url.startsWith('/')) {
       throw BUNIFY_ERR_DESC_ROUTE_MUST_START_WITH_SLASH
     }
@@ -382,7 +414,7 @@ export class Bunify implements BunifyInstance {
     return this
   }
 
-  addHook(hook: BunifyLifecycle | RequestLifecycle, handler: BunifyHook | BunifyHook[] | RequestHook | RequestHook[]): BunifyInstance {
+  addHook(hook: BunifyLifecycle | RequestLifecycle, handler: BunifyHook | BunifyHook[] | RequestHook | RequestHook[]): Bunify {
     if (!this._hooks[hook]) {
       throw BUNIFY_ERR_DESC_HOOK_NOT_FOUND
     }

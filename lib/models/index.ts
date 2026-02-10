@@ -17,6 +17,5 @@ export type {
 export type {
   BunifyHook,
   BunifyGenericHook,
-  BunifyOnRequestHook,
   BunifyAnyAdditionalHook
 } from './application-hooks'

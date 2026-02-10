@@ -1,7 +1,7 @@
-import type { LoggerOptions } from 'pino'
 import { BunifyOptionsError } from './errors'
 import type { BunRequest, TLSOptions } from 'bun'
-import type pino from 'pino'
+import type { BunifyRequestIdFactory } from './utils/request-id'
+import type { Config } from '@logtape/logtape'
 
 /**
  * @internal
@@ -10,7 +10,7 @@ export const ENV_PORTS_POSSIBLE = [ "BUNIFY_PORT", "BUN_PORT", "PORT", "NODE_POR
 
 export interface BunifyOptions {
   /**
-   * Do not output anything from Bunify to pino
+   * Do not output anything from Bunify to LogTape
    * @default false
    */
   silent?: boolean
@@ -19,7 +19,7 @@ export interface BunifyOptions {
    */
   statistics?: {
     /**
-     * Amount of seconds inbetween metrics logging to pino
+     * Amount of seconds inbetween metrics logging to LogTape
      * @default 0 disabled metrics logging
      */
     metricsLogInterval?: number
@@ -45,10 +45,10 @@ export interface BunifyOptions {
     redirects?: boolean
   }
   /**
-   * Pino logging configuration
+   * Enable the use of the LogTape logger
    * @default false Logging is disabled by default for performance
    */
-  log?: boolean | LoggerOptions | pino.Logger
+  log?: boolean | Config<string, string>
   /**
    * Bun server port to use
    * @default $BUNIFY_PORT, $BUN_PORT, $PORT, $NODE_PORT, 3000
@@ -128,7 +128,8 @@ export interface BunifyRequestOptions {
    * @param request 
    * @returns 
    */
-  genReqId?: (request: BunRequest) => number | string
+  genReqId?: boolean | ((request: BunRequest) => number | string),
+  genReqIdFactory?: BunifyRequestIdFactory
 }
 
 
