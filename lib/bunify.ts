@@ -1,14 +1,160 @@
-import { EnvUtils } from './utils/environment';
 import pino from 'pino'
-import type { BunifyOptions } from './options'
-import { ENV_PORTS_POSSIBLE } from './options'
-import { BunifyError } from './errors/bunify-error';
-import { BunifyResponse } from './response';
+import type { BunRequest } from 'bun';
+
+
+import {
+  BUNIFY_ERR_ALREADY_RUNNING,
+  BUNIFY_ERR_DESC_HOOK_NOT_FOUND,
+  BUNIFY_ERR_DESC_ROUTE_EXISTS,
+  BUNIFY_ERR_DESC_ROUTE_MUST_START_WITH_SLASH,
+  BUNIFY_ERR_NOT_RUNNING,
+  BunifyError
+} from './errors';
+
+import { EnvUtils } from './utils/environment';
+import type { BunifyOptions, BunifyRequestOptions } from './options'
+import { ENV_PORTS_POSSIBLE,  } from './options'
+import { type _RequestRoute, type RequestHandler, type RequestHandlerFunction, type RequestHook, type RequestRoute } from './models/request-route';
+
 import { defaultErrorHandlerFactory } from './errors/error-handler';
 import { BUNIFY_DEFAULT_REQUEST_ID_HEADER, defaultRequestIdGeneratorFactory } from './utils/request-id';
+import type { BunifyGenericHook, BunifyHook } from './models/application-hooks';
+
+import { BunifyResponse } from './response';
+import { BunifyRequest, RequestLifecycle } from './request';
+import { catchResponseOrContinue, executeRequestAndRouteHook } from './request-pipeline';
+
+
 
 export interface BunifyInstance {
+  /**
+   * Bunify server listen port
+   * @returns The current server's configured port when running, falls back to configured port
+   */
+  get port(): number
+  /**
+   * Returns the listening hostname/ip
+   */
+  get hostname(): string
+  /**
+   * Returns the pino logger if logging is enabled
+   * 
+   * @optional
+   */
+  get log(): pino.Logger<never, any> | undefined
+  /**
+   * Server running status
+   */
+  get running(): boolean
+  /**
+   * Configuration options for requests
+   */
+  get requestOptions(): BunifyRequestOptions | undefined
 
+  /**
+   * Start the Bunify server
+   * 
+   * @throws {BunifyError} if the server is already running
+   * @param hostname Override the configuration's listen addresses
+   * @param port Override the configuration's listen port
+   */
+  listen(hostname?: string, port?: number): Promise<BunifyInstance>
+
+  /**
+   * Reload the Bunify server, applying the new routes
+   * @throws {BunifyError} if server hasn't been started yet
+   */
+  reload(): Promise<BunifyInstance>
+  /**
+   * Stop the the Bunify server
+   * 
+   * @param kill Should the server be terminated, aborting all in-flight request
+   * @throws {BunifyError} if server hasn't been started yet
+   */
+  stop(kill?: boolean): Promise<BunifyInstance> 
+
+  /**
+   * Apply one or more request hook functions to the hooks lifecycle
+   * @param hook hook name
+   * @param handler Handler(s) to execute
+   */
+  addHook(hook: RequestLifecycle, handler: RequestHook | RequestHook[]): BunifyInstance;
+  /**
+   * Apply one or more hook functions to this Bunify instance
+   * 
+   * @param hook 
+   * @param handler 
+   */
+  addHook(hook: BunifyLifecycle, handler: BunifyHook | BunifyHook[]): BunifyInstance;
+
+  /**
+   * Register a new GET-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  get(url: string, handler: RequestHandler): BunifyInstance
+  /**
+   * Register a new PUT-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  put(url: string, handler: RequestHandler): BunifyInstance
+  /**
+   * Register a new POST-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  post(url: string, handler: RequestHandler): BunifyInstance
+  /**
+   * Register a new PATCH-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  patch(url: string, handler: RequestHandler): BunifyInstance
+  /**
+   * Register a new DELETE-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  delete(url: string, handler: RequestHandler): BunifyInstance
+  /**
+   * Register a new HEAD-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  head(url: string, handler: RequestHandler): BunifyInstance
+  /**
+   * Register a new TRACE-route
+   * 
+   * @param url Path to route, parameters are allowed
+   * @param handler Function to execute after the preHandler hook
+   */
+  trace(url: string, handler: RequestHandler): BunifyInstance
+
+
+  /**
+   * Register a route with configuration
+   * 
+   * @param route 
+   * @param override Override any existing route, and reload the server if running
+   */
+  addRoute(route: RequestRoute, override?: boolean): BunifyInstance
+}
+
+export enum BunifyLifecycle {
+  OnReady = 'onReady',
+  OnListen = 'onListen',
+  OnReload = 'onReload',
+  OnClose = 'onClose',
+  PreClose = 'preClose',
+  OnRoute = 'onRoute',
+  OnRegister = 'onRegister'
 }
 
 function loggerFactory(logOptions?: boolean | pino.LoggerOptions<never, boolean> | pino.Logger<never, boolean>): pino.Logger | undefined {
@@ -27,6 +173,30 @@ function loggerFactory(logOptions?: boolean | pino.LoggerOptions<never, boolean>
 export class Bunify implements BunifyInstance {
   private readonly _baseLogger: pino.Logger | undefined
   private readonly _options: BunifyOptions
+  private readonly _routes: Record<string, _RequestRoute>  = {}
+  private readonly _hooks: Record<BunifyLifecycle | RequestLifecycle, BunifyHook[] | RequestHook[]> = {
+    // Application hooks
+    onReady: [],
+    onReload: [],
+    onRegister: [],
+    onRoute: [],
+    preClose: [],
+    onListen: [],
+    onClose: [],
+
+    // Request hooks
+    onRequest: [],
+    preParsing: [],
+    preValidation: [],
+    preHandler: [],
+    preSerialization: [],
+    onSend: [],
+    onResponse: [],
+    onRequestAbort: [],
+    onError: [],
+    onTimeout: [],
+  }
+
   protected _server?: Bun.Server<any>
   private _pino: pino.Logger | undefined
 
@@ -52,14 +222,10 @@ export class Bunify implements BunifyInstance {
     return this._options.request
   }
 
-  set errorHandler(value: (error: Bun.ErrorLike) => Response | Promise<Response> | void | Promise<void>) {
+  set errorHandler(value: (error: Bun.ErrorLike) => BunifyResponse | Promise<BunifyResponse> | void | Promise<void>) {
     this._errorHandler = value
   }
 
-  /**
-   * 
-   * @param options 
-   */
   constructor(options: BunifyOptions) {
     this._options = options
 
@@ -81,25 +247,22 @@ export class Bunify implements BunifyInstance {
     this._pino = this._baseLogger
   }
 
-  /**
-   * Start the Bunify server
-   * 
-   * @throws {BunifyError} if the server is already running
-   * @param hostname Override the configuration's listen addresses
-   * @param port Override the configuration's listen port
-   */
-  listen(hostname?: string, port?: number): Bunify {
+  async listen(hostname?: string, port?: number): Promise<BunifyInstance> {
     if (this._server != null) {
-      throw new BunifyError('Server is already running, reload stop or reload the process');
+      throw BUNIFY_ERR_ALREADY_RUNNING
     }
 
     hostname = this.getListenHostname(hostname)
     port = this.getPort(port)
     const hasTls = this._options.tls != null && (!Array.isArray(this._options.tls) || this._options.tls.length > 0)
+    
+    await this.executeBunifyHook(BunifyLifecycle.OnReady)
 
     if (!this._options.silent)
       this._pino?.info({ service: { address: `http${hasTls ? 's': ''}://${hostname}:${port}` }}, `Starting Bunify server`)
     this._server = Bun.serve(this.getServerSettings(hostname, port))
+    
+    await this.executeBunifyHook(BunifyLifecycle.OnListen)
 
     if (this._baseLogger) {
       this._pino = this._baseLogger?.child({ service: { ephemeral_id: this._server.id } })
@@ -111,37 +274,33 @@ export class Bunify implements BunifyInstance {
     return this
   }
 
-  /**
-   * Reload the Bunify server, applying the new routes
-   * @throws {BunifyError} if server hasn't been started yet
-   */
-  reload(): Bunify {
+  async reload(): Promise<BunifyInstance> {
     if (this._server == null)
-      throw new BunifyError('Server isn\'t running!')
+      throw BUNIFY_ERR_NOT_RUNNING
 
     if (!this._options.silent)
-      this._pino?.info({ service: { address: this._server.url }},  `Starting Bunify server`)
+      this._pino?.info({ service: { address: this._server.url }},  `Reloading Bunify server`)
 
     this._server.reload(this.getServerSettings(this._server.hostname, this._server.port))
+
+    await this.executeBunifyHook(BunifyLifecycle.OnReload)
 
     return this
   }
 
-  /**
-   * Stop the the Bunify server
-   * 
-   * @param kill Should the server be terminated, aborting all in-flight request
-   * @throws {BunifyError} if server hasn't been started yet
-   */
-  async stop(kill: boolean = false): Promise<Bunify> {
+  async stop(kill: boolean = false): Promise<BunifyInstance> {
     if (this._server == null)
-      throw new BunifyError('Server isn\'t running!')
+      throw BUNIFY_ERR_NOT_RUNNING
 
+    await this.executeBunifyHook(BunifyLifecycle.PreClose)
     if (!this._options.silent)
       this._pino?.debug(`${kill ? 'Killing' : 'Stopping'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
+
     await this._server?.stop(kill)
+
     if (!this._options.silent)
       this._pino?.debug(`${kill ? 'Killed' : 'Stopped'} HTTP server ${this._server?.id ?? 'NO-ID'}`)
+    await this.executeBunifyHook(BunifyLifecycle.OnClose)
 
     // Remove server instance
     this._server = undefined
@@ -164,6 +323,72 @@ export class Bunify implements BunifyInstance {
    */
   use(): Bunify {
     throw new BunifyError('Not implemented yet')
+
+    return this
+  }
+
+/**
+ * Interopability with the Fastify structure, except you can chain route functions
+*/
+
+
+  get(url: string, handler: RequestHandlerFunction): BunifyInstance {
+    return this.addRoute({ url, handler, method: 'GET' })
+  }
+  put(url: string, handler: RequestHandlerFunction): BunifyInstance {
+    return this.addRoute({ url, handler, method: 'PUT' })
+  }
+  post(url: string, handler: RequestHandlerFunction): BunifyInstance {
+    return this.addRoute({ url, handler, method: 'POST' })
+  }
+  patch(url: string, handler: RequestHandlerFunction): BunifyInstance {
+    return this.addRoute({ url, handler, method: 'PATCH' })
+  }
+  delete(url: string, handler: RequestHandlerFunction): BunifyInstance  {
+    return this.addRoute({ url, handler, method: 'DELETE' })
+  }
+  head(url: string, handler: RequestHandlerFunction): BunifyInstance  {
+    return this.addRoute({ url, handler, method: 'HEAD' })
+  }
+  trace(url: string, handler: RequestHandlerFunction): BunifyInstance  {
+    return this.addRoute({ url, handler, method: 'TRACE' })
+  }
+
+  /**
+   * Register a route with configuration
+   * 
+   * @param route 
+   * @param override Override any existing route, and reload the server if running
+   */
+  addRoute(route: RequestRoute, override?: boolean): BunifyInstance {
+    if (!route.url.startsWith('/')) {
+      throw BUNIFY_ERR_DESC_ROUTE_MUST_START_WITH_SLASH
+    }
+
+    const configuredRoute = this._routes[route.url]
+    if (!override && configuredRoute) {
+      throw BUNIFY_ERR_DESC_ROUTE_EXISTS
+    }
+
+    this._routes[route.url] = {
+      internalHandler: (bunRequest: BunRequest) => this.handleRequest(bunRequest, route),
+      ...route
+    }
+    this.executeBunifyHook(BunifyLifecycle.OnRoute, route)
+
+    if (this._server != null)
+      this.reload()
+
+    return this
+  }
+
+  addHook(hook: BunifyLifecycle | RequestLifecycle, handler: BunifyHook | BunifyHook[] | RequestHook | RequestHook[]): BunifyInstance {
+    if (!this._hooks[hook]) {
+      throw BUNIFY_ERR_DESC_HOOK_NOT_FOUND
+    }
+
+    /* @ts-ignore */
+    Array.isArray(handler) ? this._hooks[hook].push(...handler) : this._hooks[hook].push(handler)
 
     return this
   }
@@ -213,7 +438,9 @@ export class Bunify implements BunifyInstance {
   }
 
   private getServerSettings(hostname?: string, port?: number): Bun.Serve.Options<any, never> {
-    const serveDevelopment = this._options.development ?? EnvUtils.envEquals([ 'BUN_ENV', 'NODE_ENV' ], "development") ?? false
+    const serveDevelopment = this._options.development
+      ?? EnvUtils.envEquals([ 'BUN_ENV', 'NODE_ENV' ], "development")
+      ?? false
 
     return {
       id: this._server?.id ?? Bun.randomUUIDv7(),
@@ -222,11 +449,96 @@ export class Bunify implements BunifyInstance {
       ipv6Only: this._options.ipv6Only ?? false,
       development: serveDevelopment,
       tls: this._options.tls,
-      routes: [
-
-      ],
+      routes: this.parseRoutes(),
       // Order: Custom error handler, development page (if enabled), default error handler
       error: this._errorHandler ?? !serveDevelopment ? defaultErrorHandlerFactory(this) : undefined
     } satisfies Bun.Serve.Options<any, never>
+  }
+
+  private async executeBunifyHook(hook: BunifyLifecycle, ...args: Array<any>) {
+    for (const bunifyHook of this._hooks[hook] as BunifyHook[]) {
+      const result = bunifyHook(this, args)
+      if (result && typeof result.then === "function") {
+        await result
+      }
+    }
+  }
+
+  private async executeRequestAndRouteHook(hook: RequestLifecycle, request: BunifyRequest, response: BunifyResponse) {
+    if (this._hooks[hook].length === 0 && request.route.hooks && request.route.hooks[hook]?.length === 0) return
+
+    let result = await executeRequestAndRouteHook(this._hooks[hook] as RequestHook[],
+      request.route.hooks ? request.route.hooks[hook] : undefined,
+      request, response)
+    if (result instanceof Response) return result
+
+    if (!response.ok) {
+      // An error statusCode has been set, jump to preSerialization
+      return await this.finalizeRequest(request, response)
+    }
+  }
+
+  private async finalizeRequest(bunifyRequest: BunifyRequest, bunifyResponse: BunifyResponse, handlerResult?: Response): Promise<Response> {
+    let result = await this.executeRequestAndRouteHook(RequestLifecycle.PreSerialization, bunifyRequest, bunifyResponse)
+    if (result instanceof Response) return result
+
+    // TODO - Serialize the response
+
+    result = await this.executeRequestAndRouteHook(RequestLifecycle.OnSend, bunifyRequest, bunifyResponse)
+    if (result instanceof Response) return result
+
+    // Execute onResponse hook functions without waiting
+    this.executeRequestAndRouteHook(RequestLifecycle.OnResponse, bunifyRequest, bunifyResponse)
+
+    // Hmm
+    return result ?? handlerResult ?? bunifyResponse.send()
+  }
+
+  private async handleRequest(request: BunRequest, route: RequestRoute): Promise<Response> {
+    const bunifyRequest = new BunifyRequest(this, request, route)
+    const bunifyResponse = new BunifyResponse(bunifyRequest)
+  
+    // Set the timeout for the request to the route timeout, or the default timeout, if neither is set, fallback to no timeout
+    const timeout = route.timeout ?? this.requestOptions?.defaultTimeout ?? 0
+    if (timeout > 0)
+      this._server?.timeout(request, timeout)
+
+
+    let result = await this.executeRequestAndRouteHook(RequestLifecycle.OnRequest, bunifyRequest, bunifyResponse)
+    if (result instanceof Response) return result
+
+    result = await this.executeRequestAndRouteHook(RequestLifecycle.PreParsing, bunifyRequest, bunifyResponse)
+    if (result instanceof Response) return result
+    
+    // TODO - Parse the body
+
+    result = await this.executeRequestAndRouteHook(RequestLifecycle.PreValidation, bunifyRequest, bunifyResponse)
+    if (result instanceof Response) return result
+
+    // TODO: Implement validation
+
+    result = await this.executeRequestAndRouteHook(RequestLifecycle.PreHandler, bunifyRequest, bunifyResponse)
+    if (result instanceof Response) return result
+
+    // Execute the request itself 
+    let handlerResult = await catchResponseOrContinue(route.handler(bunifyRequest, bunifyResponse), bunifyResponse)
+
+
+    return await this.finalizeRequest(bunifyRequest, bunifyResponse, handlerResult)
+  }
+
+  /**
+   * Convert the Bunify routes to a valid simplistic Bun.serve route
+   * 
+   * @returns 
+   */
+  private parseRoutes() {
+    const routes = {} as any
+
+    for (const [route, requestRoute] of Object.entries(this._routes)) {
+      routes[route] = requestRoute.internalHandler
+    }
+
+    return routes
   }
 }

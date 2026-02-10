@@ -2,7 +2,6 @@ import { BUNIFY_ERR_REQUEST_HOOK_RETURNS_RESPONSE, BUNIFY_ERR_RESPONSE_DOESNT_MA
 import type {
   RequestHandlerFunctionResult,
   RequestHook,
-  RequestHookOrHandler,
   RequestHookResult
 } from "./models/request-route"
 import type { BunifyRequest } from "./request"
@@ -43,7 +42,6 @@ export async function catchResponseOrContinue(handleResult: RequestHookResult | 
     const promiseResult = await handleResult
     if (isObject(promiseResult)) {
       /* @ts-ignore */
-      // The check above does
       resultResponse = promiseResult
     }
   } else if (isObject(handleResult)) {
