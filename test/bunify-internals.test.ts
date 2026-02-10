@@ -111,6 +111,13 @@ describe('Bunify', () => {
         expect((bunify as any)._hooks[lifecycle]).toContain(mockHook)
       })
 
+    test('should throw if lifecycle doesn\'t exist', () => {
+      const mockHook = mock((request: BunifyRequest, response: BunifyResponse) => {})
+      
+      expect(() => bunify.addHook('yeet' as unknown as any, mockHook))
+        .toThrowError('The provided hook is invalid')
+    })
+
 
     test.each(Object.values(RequestLifecycle))(
       'should append multiple hook callers to the request hooks',
